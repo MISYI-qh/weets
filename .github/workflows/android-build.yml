@@ -1,0 +1,46 @@
+name: WEETS Android Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'main.py'
+      - 'buildozer.spec'
+      - 'index.html'
+      - 'weets/**'
+      - '.github/workflows/android-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Android build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses-dev libtinfo6 cmake libffi-dev libssl-dev
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install buildozer cython==0.29.36
+
+      - name: Build debug APK
+        run: buildozer -v android debug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WEETS-android-debug
+          path: bin/*.apk
+          if-no-files-found: error
+          retention-days: 14
