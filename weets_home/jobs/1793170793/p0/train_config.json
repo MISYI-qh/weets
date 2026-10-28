@@ -1,0 +1,22 @@
+{
+  "data": "/public/weets/2744/weets_home/jobs/1793170793/train.jsonl",
+  "out_dir": "/public/weets/2744/weets_home/jobs/1793170793/p0",
+  "steps": 43,
+  "batch_size": 4,
+  "grad_accum": 1,
+  "learning_rate": 0.0006,
+  "min_lr": 5.9999999999999995e-05,
+  "weight_decay": 0.1,
+  "warmup_steps": 4,
+  "eval_interval": 43,
+  "eval_batches": 3,
+  "save_interval": 43,
+  "grad_clip": 1.0,
+  "seed": 1337,
+  "device": "cpu",
+  "precision": "auto",
+  "resume": "",
+  "init_from": "/public/weets/2744/weets_home/model/current.npz",
+  "mode": "sft",
+  "block_size": 160
+}
