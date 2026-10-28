@@ -1,3 +1,4 @@
+
 name: WEETS Android Build
 
 on:
@@ -18,6 +19,7 @@ jobs:
   build-apk:
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -34,8 +36,13 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           python -m pip install buildozer cython==0.29.36
 
+      - name: Set Java 17
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          echo "$JAVA_HOME_17_X64/bin" >> "$GITHUB_PATH"
+          "$JAVA_HOME_17_X64/bin/java" -version
+
       - name: Build debug APK
-        shell: bash
         run: yes | buildozer -v android debug
 
       - name: Upload APK artifact
