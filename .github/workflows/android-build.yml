@@ -35,7 +35,8 @@ jobs:
           python -m pip install buildozer cython==0.29.36
 
       - name: Build debug APK
-        run: buildozer -v android debug
+        shell: bash
+        run: yes | buildozer -v android debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
