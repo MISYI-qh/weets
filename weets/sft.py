@@ -154,8 +154,13 @@ def messages_to_prompt_ids(messages, tokenizer):
     'Assistant: ' header so the model continues with its answer. messages: [{'role','content'}]."""
     segs = record_to_segments({"messages": messages}, "prompt", require_answer=False)
     ids = [BOS]
-    for text, _trained, add_eos in segs:
-        ids += tokenizer.encode(text)
+    pending = False
+    for i, (text, _trained, add_eos) in enumerate(segs):
+        # Training encodes the final user turn TOGETHER with the 'Assistant: ' header (one segment). A BPE tokenizer with
+        # merges would otherwise split "...\nAssistant: " differently at inference than in training -> garbled answers.
+        last = i == len(segs) - 1
+        ids += tokenizer.encode(text + ("Assistant: " if last and not add_eos else ""))
+        pending = last and add_eos
         if add_eos:
             ids.append(EOS)
-    return ids + tokenizer.encode("Assistant: ")
+    return ids + (tokenizer.encode("Assistant: ") if pending or not segs else [])

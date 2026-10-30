@@ -79,6 +79,7 @@ def build_parser():
     a("--dropout", type=float, default=0.0)
     a("--tokenizer", default="", help="tokenizer.json (byte or BPE); default: from checkpoint, else byte")
     a("--grad-checkpoint", action="store_true", help="recompute activations in backward (saves RAM, slower)")
+    a("--max-seconds", type=float, default=0.0, help="stop early (and save) after this many seconds; 0 = no limit (for slow devices)")
     a("--carry-optimizer", action="store_true", help="with --init-from: keep AdamW moments of surviving parameters (by name)")
     return ap
 
@@ -201,10 +202,11 @@ def train(argv=None):
         now = time.time()
         tps = tokens_per_step / max(now - last_t, 1e-9)
         last_t = now
-        if step % 10 == 0 or step == cfg.steps - 1:
+        stop = o.max_seconds > 0 and (now - started) > o.max_seconds and step < cfg.steps - 1
+        if step % 5 == 0 or step == cfg.steps - 1 or stop:
             print(f"step {step:7d} | train_loss {running:.4f} | grad_norm {gnorm:.3f} | lr {lr:.2e} | "
                   f"{tps:,.0f} tok/s | elapsed {now - started:.1f}s")
-        if step % cfg.eval_interval == 0 or step == cfg.steps - 1:
+        if step % cfg.eval_interval == 0 or step == cfg.steps - 1 or stop:
             losses = estimate_loss(model, {"train": train_batcher, "val": val_batcher}, cfg.eval_batches)
             print(f"EVAL step {step}: train={losses['train']:.4f} val={losses['val']:.4f}")
             if math.isfinite(losses["val"]) and losses["val"] < best_val:
@@ -213,8 +215,11 @@ def train(argv=None):
             with (out / "metrics.jsonl").open("a", encoding="utf-8") as f:
                 f.write(json.dumps({"step": step, "train_loss": losses["train"],
                                     "val_loss": losses["val"], "lr": lr, "tokens_per_sec": tps}) + "\n")
-        if step % cfg.save_interval == 0 or step == cfg.steps - 1:
+        if step % cfg.save_interval == 0 or step == cfg.steps - 1 or stop:
             save_checkpoint(out / "last.npz", model, optimizer, None, step, best_val, mc, cfg, tokenizer, opt_names, rng=rng)
+        if stop:
+            print(f"TIME_BUDGET reached at step {step}/{cfg.steps} after {now - started:.0f}s; checkpoint saved")
+            break
     log(f"Training finished. Best validation loss: {best_val:.4f}. Checkpoints: {out}")
     return 0
 

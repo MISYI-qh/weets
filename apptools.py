@@ -1,6 +1,6 @@
-"""Alat bawaan aplikasi WEETS: cari web, baca halaman, jalankan kode Python, buat berkas, ingatan ajaran.
+"""Alat bawaan aplikasi Weets: cari web, baca halaman, jalankan kode Python, buat berkas, ingatan ajaran.
 Semua memakai pustaka standar Python (tanpa API/kunci). Pencarian & baca halaman butuh internet saat dipakai."""
-import difflib, html, io, ipaddress, json, os, re, socket, subprocess, sys, tempfile, urllib.parse, urllib.request, zipfile
+import difflib, html, io, ipaddress, json, os, re, socket, subprocess, sys, tempfile, time, urllib.parse, urllib.request, zipfile
 
 UA = "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Mobile Safari/537.36"
 
@@ -49,16 +49,41 @@ def parse_ddg(page):
     return out
 
 
+def parse_wiki(js):
+    out = []
+    for r in (js.get("query", {}) or {}).get("search", [])[:6]:
+        title = r.get("title", "")
+        snip = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", "", r.get("snippet", "")))).strip()
+        out.append({"title": title, "url": "https://id.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")), "snippet": snip})
+    return out
+
+
 def search(q):
+    """Cari web: DuckDuckGo (HTML) lebih dulu; bila gagal/kosong, cadangan: Wikipedia Indonesia."""
     q = q.strip()[:200]
     if not q:
         return {"error": "empty"}
+    err = None
+    for attempt in ("ddg_post", "ddg_get"):
+        try:
+            if attempt == "ddg_post":
+                body, _, _ = _get("https://html.duckduckgo.com/html/", data=urllib.parse.urlencode({"q": q}).encode(), timeout=12)
+            else:
+                body, _, _ = _get("https://lite.duckduckgo.com/lite/?" + urllib.parse.urlencode({"q": q}), timeout=12)
+            res = parse_ddg(body.decode("utf-8", "replace"))
+            if res:
+                return {"results": res, "source": "DuckDuckGo"}
+        except Exception as e:
+            err = type(e).__name__
     try:
-        body, _, _ = _get("https://html.duckduckgo.com/html/", data=urllib.parse.urlencode({"q": q}).encode(), timeout=15)
-        res = parse_ddg(body.decode("utf-8", "replace"))
+        body, _, _ = _get("https://id.wikipedia.org/w/api.php?" + urllib.parse.urlencode(
+            {"action": "query", "list": "search", "srsearch": q, "format": "json", "srlimit": 6, "utf8": 1}), timeout=12)
+        res = parse_wiki(json.loads(body.decode("utf-8", "replace")))
+        if res:
+            return {"results": res, "source": "Wikipedia"}
     except Exception as e:
-        return {"error": "offline", "detail": type(e).__name__}
-    return {"results": res} if res else {"error": "no_results"}
+        err = err or type(e).__name__
+    return {"error": "offline", "detail": err} if err else {"error": "no_results"}
 
 
 def page(url):
@@ -106,6 +131,8 @@ def page(url):
 def run_python(code):
     if len(code) > 20000:
         return {"error": "too_big"}
+    if not (sys.executable and os.path.exists(sys.executable)):
+        return {"error": "unavailable"}
     with tempfile.TemporaryDirectory() as cwd:
         def limits():
             try:
@@ -121,6 +148,8 @@ def run_python(code):
                                preexec_fn=limits if os.name == "posix" else None)
         except subprocess.TimeoutExpired:
             return {"error": "timeout"}
+        except OSError:
+            return {"error": "unavailable"}
     return {"out": (r.stdout or "")[:6000], "err": (r.stderr or "")[-2500:], "code": r.returncode}
 
 
@@ -189,7 +218,8 @@ MIMES = {"txt": "text/plain", "md": "text/markdown", "csv": "text/csv", "json": 
 
 
 def make_file(ext, title, content):
-    ext = ext if ext in MIMES else "txt"
+    ext = re.sub(r"[^a-z0-9]", "", ext.lower())[:8] or "txt"
+    MIMES.setdefault(ext, "text/plain")
     if ext == "pdf":
         return make_pdf(title, content), MIMES[ext], ext
     if ext == "docx":
@@ -221,3 +251,138 @@ def match_taught(q, taught, thr=0.86):
         if r > best:
             best, ba = r, str(t.get("a", ""))
     return ba if best >= thr and ba else None
+
+
+# ------------------------------------------------------------------ peramban dalam aplikasi (proksi halaman)
+_NAV = ("<script>document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href]');if(!a)return;"
+        "var h=a.href;if(!/^https?:/.test(h))return;e.preventDefault();parent.postMessage({weetsNav:h},'*')},true);"
+        "document.addEventListener('submit',function(e){e.preventDefault()},true);"
+        "try{parent.postMessage({weetsTitle:document.title},'*')}catch(x){}</script>")
+
+
+def browse(url):
+    """Ambil halaman lewat server lalu sajikan sebagai halaman biasa (tanpa header yang melarang ditampilkan di dalam aplikasi).
+    Tautan diteruskan ke aplikasi lewat postMessage; sumber daya (gambar/gaya) dimuat langsung dari situsnya."""
+    def page_msg(t, code=200):
+        return ("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+                "<body style='font:16px sans-serif;padding:24px;color:#444'>%s</body>" % html.escape(t)).encode(), "text/html; charset=utf-8", code
+    ok = _public_host(url)
+    if ok is False:
+        return page_msg("Alamat ini tidak boleh dibuka dari aplikasi.", 403)
+    if ok is None:
+        return page_msg("Tidak ada koneksi internet.", 502)
+    try:
+        data, ctype, final = _get(url, timeout=20, max_bytes=4_000_000)
+    except Exception as e:
+        return page_msg("Halaman tidak bisa dibuka (%s)." % type(e).__name__, 502)
+    if _public_host(final) is False:
+        return page_msg("Alamat ini tidak boleh dibuka dari aplikasi.", 403)
+    low = ctype.lower()
+    if "html" not in low and not data[:200].lstrip().lower().startswith((b"<!doctype", b"<html")):
+        if low.startswith(("image/", "text/plain", "application/pdf")):
+            return data, ctype, 200
+        return page_msg("Berkas ini bukan halaman web. Gunakan tombol Buka di browser.", 200)
+    m = re.search(rb"charset=([\w-]+)", data[:4000], re.I)
+    try:
+        txt = data.decode((m.group(1).decode() if m else "utf-8"), "replace")
+    except LookupError:
+        txt = data.decode("utf-8", "replace")
+    txt = re.sub(r"<meta[^>]+http-equiv=[\"']?content-security-policy[^>]*>", "", txt, flags=re.I)
+    base = '<base href="%s">' % html.escape(final, quote=True)
+    if re.search(r"<head[^>]*>", txt, re.I):
+        txt = re.sub(r"(<head[^>]*>)", lambda mm: mm.group(1) + base, txt, count=1, flags=re.I)
+    else:
+        txt = base + txt
+    txt += _NAV
+    return txt.encode("utf-8"), "text/html; charset=utf-8", 200
+
+
+# ------------------------------------------------------------------ notifikasi bawaan Android (aman dipanggil di mana pun)
+def native_notify(title, text, nid=7):
+    if not os.environ.get("ANDROID_ARGUMENT") and "ANDROID_ROOT" not in os.environ:
+        return False
+    try:
+        from jnius import autoclass
+        ctx = None
+        try:
+            ctx = autoclass("org.kivy.android.PythonService").mService
+        except Exception:
+            ctx = None
+        if ctx is None:
+            ctx = autoclass("org.kivy.android.PythonActivity").mActivity
+        Context = autoclass("android.content.Context")
+        nm = ctx.getSystemService(Context.NOTIFICATION_SERVICE)
+        B = autoclass("android.app.Notification$Builder")
+        if autoclass("android.os.Build$VERSION").SDK_INT >= 26:
+            NC = autoclass("android.app.NotificationChannel")
+            nm.createNotificationChannel(NC("weets_events", "Weets", 3))
+            b = B(ctx, "weets_events")
+        else:
+            b = B(ctx)
+        b.setContentTitle(title).setContentText(text).setSmallIcon(ctx.getApplicationInfo().icon).setAutoCancel(True)
+        nm.notify(nid, b.build())
+        return True
+    except Exception:
+        return False
+
+
+_online = [0.0, False]
+
+
+def online():
+    """Cek koneksi internet singkat tanpa DNS (di-cache 60 detik): coba sambung ke dua alamat publik."""
+    if time.time() - _online[0] < 60:
+        return _online[1]
+    ok = False
+    for ip in ("1.1.1.1", "8.8.8.8"):
+        try:
+            socket.create_connection((ip, 443), 2.5).close()
+            ok = True
+            break
+        except Exception:
+            continue
+    _online[0], _online[1] = time.time(), ok
+    return ok
+
+
+def wake(on, tag="weets"):
+    """Wake lock parsial di Android supaya CPU tetap jalan saat layar mati selama pelatihan (aman dipanggil di mana pun)."""
+    if not os.environ.get("ANDROID_ARGUMENT") and not os.environ.get("PYTHON_SERVICE_ARGUMENT"):
+        return
+    try:
+        from jnius import autoclass
+        try:
+            ctx = autoclass("org.kivy.android.PythonService").mService
+        except Exception:
+            ctx = None
+        if ctx is None:
+            ctx = autoclass("org.kivy.android.PythonActivity").mActivity
+        pm = ctx.getSystemService(autoclass("android.content.Context").POWER_SERVICE)
+        if on:
+            if not getattr(wake, "lock", None):
+                wake.lock = pm.newWakeLock(1, tag)
+            wake.lock.acquire(30 * 60 * 1000)
+        elif getattr(wake, "lock", None) and wake.lock.isHeld():
+            wake.lock.release()
+    except Exception:
+        pass
+
+
+def ask_battery():
+    """Minta pengecualian hemat baterai (Android) supaya layanan latar belakang tidak dimatikan sistem."""
+    if not os.environ.get("ANDROID_ARGUMENT"):
+        return {"ok": False, "error": "not_android"}
+    try:
+        from jnius import autoclass
+        act = autoclass("org.kivy.android.PythonActivity").mActivity
+        pm = act.getSystemService(autoclass("android.content.Context").POWER_SERVICE)
+        pkg = act.getPackageName()
+        if pm.isIgnoringBatteryOptimizations(pkg):
+            return {"ok": True, "already": True}
+        Intent = autoclass("android.content.Intent")
+        i = Intent(autoclass("android.provider.Settings").ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+        i.setData(autoclass("android.net.Uri").parse("package:" + pkg))
+        act.startActivity(i)
+        return {"ok": True}
+    except Exception as e:
+        return {"ok": False, "error": type(e).__name__}

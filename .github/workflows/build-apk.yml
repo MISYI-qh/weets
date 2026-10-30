@@ -1,0 +1,61 @@
+name: Build APK (Weets)
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Cache Buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: buildozer-${{ hashFiles('buildozer.spec') }}
+
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk autoconf automake libtool pkg-config \
+            zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev build-essential ccache
+
+      - name: Install Buildozer
+        run: pip install --upgrade pip buildozer "cython<3" virtualenv
+
+      - name: Build debug APK
+        run: yes | buildozer -v android debug
+
+      - name: Upload APK (dasar)
+        uses: actions/upload-artifact@v4
+        with:
+          name: weets-apk
+          path: bin/*.apk
+
+      # Tambahan: layanan hidup lagi otomatis saat HP menyala (BootReceiver). Bila langkah ini gagal, APK dasar di atas tetap bisa dipakai.
+      - name: Tambah BootReceiver lalu build ulang
+        continue-on-error: true
+        run: |
+          python android_src/patch_manifest.py
+          D=$(ls -d .buildozer/android/platform/build-*/dists/weets | head -1)
+          export ANDROID_HOME=$HOME/.buildozer/android/platform/android-sdk
+          export ANDROID_SDK_ROOT=$ANDROID_HOME
+          (cd "$D" && ./gradlew assembleDebug --no-daemon)
+          mkdir -p bin-boot && cp "$D"/build/outputs/apk/debug/*.apk bin-boot/
+
+      - name: Upload APK (dengan auto-start setelah HP menyala)
+        if: hashFiles('bin-boot/*.apk') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: weets-apk-autostart
+          path: bin-boot/*.apk
