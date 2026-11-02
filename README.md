@@ -1,31 +1,29 @@
-# Weets (Misyi)
+# Weets 2.1
 
-Jalankan: `python main.py` lalu buka http://localhost:8765 (web dan aplikasi memakai kode yang sama).
-APK: push ke GitHub (branch main/master) → Actions → "Build APK (Weets)" → unduh artifact `weets-apk`.
+AI kecil berbahasa Indonesia yang berjalan penuh di ponsel (Python + NumPy murni, tanpa model orang lain), belajar dan tumbuh sendiri.
 
-## Model
-- `model/weets-starter.wt`: model bawaan ±600 ribu parameter (598.912), dilatih dari nol dalam Bahasa Indonesia, tokenizer BPE yang tumbuh.
-- Ekspor/impor `.wt` di halaman Model (bobot, tokenizer, konfigurasi, status optimizer).
-- **Tumbuh**: kosakata bertambah otomatis saat kamu melatihnya (hanya bila terbukti memperpendek teksmu);
-  kapasitas (tambah lapis / lebarkan MLP) hanya dipakai bila eksperimen kontrol-vs-kandidat membuktikan lebih baik.
-- **Belajar dari like/dislike**: like = pasangan (pertanyaan, jawaban) dilatih; dislike = bisa memberi jawaban benar, dilatih.
-  Tiap 5 feedback baru, Weets berlatih sendiri di latar belakang (bisa dimatikan di Pengaturan).
+## Pakai
+1. Ekstrak zip ini, salin **seluruh isinya** ke akar repo GitHub `weets` (ganti file lama), lalu `git add -A && git commit && git push`.
+2. Workflow `.github/workflows/build-apk.yml` menjalankan uji lalu membangun APK (artifact `weets-apk`).
+   - `buildozer.spec` dan workflow ini disusun dari metadata APK lamamu (id.misyi.weets, minSdk 24, arm64-v8a, bootstrap webview, port 5000, layanan `weets`). Karena aku tidak bisa membangunnya di sini, **jika build lamamu sudah jalan, pertahankan spec/workflow lamamu** dan hanya samakan: `source.include_exts` memuat `py,png,svg,html,json,wt`, `services = weets:service.py:foreground`, dan izin INTERNET, FOREGROUND_SERVICE, WAKE_LOCK, POST_NOTIFICATIONS, REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
+3. Di komputer: `python3 server.py` lalu buka http://127.0.0.1:8765 . Uji: `python3 tests/test_wordtok.py && python3 tests/test_app.py`.
 
-## Alat bawaan (tanpa API)
-Cari web (DuckDuckGo, cadangan Wikipedia Indonesia), browser dalam aplikasi (tautan di chat dibuka di pembaca; ada tampilan web),
-buat berkas (format pilihan sendiri, isi ditulis model) dengan pratinjau, analisis berkas & gambar, hitung, waktu,
-contoh kode + tombol Jalankan, dikte suara (hanya suara → tulisan).
+## Isi
+- `main.py`, `service.py`, `server.py`: titik masuk Android, layanan latar belakang, server lokal 127.0.0.1.
+- `engine.py`: obrolan, gaya (normal / jujur / kasar / puitis), alat (cari web, buka tautan, hitung, catatan), sampling anti-slop.
+- `learner.py`: belajar dan tumbuh sendiri (kosakata, MLP, lapisan); tiap perubahan diuji dan dibuang bila lebih buruk.
+- `websearch.py`: pencarian tanpa kunci (DuckDuckGo lalu Wikipedia) + mode baca untuk peramban dalam aplikasi; sebab kegagalan dilaporkan jelas.
+- `weets/`: inti model (NumPy), tokenizer per kata `wordtok.py`, generator korpus Indonesia `corpus/`.
+- `model/weets-starter.wt`: model awal 1,32 juta parameter (6.399 langkah, loss uji ~0,10 pada data sintetis).
+- `index.html`: antarmuka (splash "Weets", animasi logo, 50 status berpikir dengan 50 animasi).
+- `pelatihan/`: cara mengulang pelatihan dan uji UI.
 
-## Otonomi (belajar sendiri, tanpa membuka aplikasi)
-`autolearn.py` memilih sendiri aksi berikutnya tiap menit: (1) latih pelajaran/ketikan baru → (2) bila online: cari topik dari daftar tujuan
-(`weets.curiosity.Curriculum`: topik dasar, koreksi pengguna, rasa ingin tahu), baca halaman berbahasa Indonesia, pelajari (maks 40 halaman/hari)
-→ (3) bila offline atau tak ada yang baru: konsolidasi (ulang pelajaran lama) dan uji pertumbuhan dengan data lokal.
-Aktivitasnya terlihat di halaman Model → Aktivitas mandiri. Pemilihnya penjadwal berbasis aturan + statistik nyata, bukan model neural.
+## Belajar di latar belakang
+Ditanya sekali saat pertama dibuka. Saklarnya ada di Belajar dan Pengaturan; dimatikan kapan saja, layanan berhenti sendiri.
 
-## Latar belakang (Android)
-`service.py` = layanan latar depan (notifikasi tetap "Weets"): terus melatih pelajaran/ketikan baru dan menguji pertumbuhan
-walau layar mati atau aplikasi di latar belakang. Aplikasi dan layanan berbagi kunci berkas (`job.lock`) agar tidak melatih bersamaan.
-Notifikasi: selesai berlatih, jawaban selesai (saat aplikasi tidak terlihat), eksperimen pertumbuhan selesai.
-Auto-start setelah HP menyala: ambil artifact `weets-apk-autostart` dari GitHub Actions (BootReceiver ditambahkan setelah build pertama; bila gagal pakai `weets-apk`).
-Tombol "Izinkan berjalan di latar belakang" di Pengaturan meminta pengecualian hemat baterai.
-Diagnostik kecepatan: halaman Model → Diagnostik. Bila WebView gagal memuat, layar menampilkan galatnya (bisa difoto).
+## Batas yang jujur
+- Suara tiruan rekamanmu (99%) tidak ada. Weets memakai suara Indonesia bawaan ponsel; dikte lewat layar bicara Google.
+- Model kecil: fasih pada gaya yang dilatih, fakta dunia harus dari web dan bisa salah. Jawaban "semua sudut pandang" kadang memakai kalimat yang kurang pas topik.
+- Kode Android (notifikasi, baterai, dikte, layanan, unggah berkas di WebView) dan build spec belum diuji di perangkat. UI diuji dengan DOM tiruan.
+- Gambar tidak dibaca (tanpa model penglihatan); PDF hasil pindai tidak dibaca (tanpa OCR).
+- Mode Kasar mengumpat pada kebiasaan dan alasan, bukan identitas, dan berganti peduli saat ada tanda krisis.

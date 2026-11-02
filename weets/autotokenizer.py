@@ -44,6 +44,14 @@ def tokens_per_byte(tok, pieces):
 def grow_tokenizer(tok, texts, policy=None):
     """Return (new_tokenizer, report). `tok` is never modified. Old merges stay a strict prefix."""
     policy = policy or TokenizerPolicy()
+    if getattr(tok, "kind", "") == "word":
+        from .wordtok import WordTokenizer
+        new = WordTokenizer.from_dict(tok.to_dict())
+        before = new.vocab_size
+        added = new.add_counts(new.count_words(_pieces(texts, policy.line_chars, policy.sample_chars)),
+                               min_freq=policy.min_freq, max_new=policy.round_size * 4, cap=policy.max_vocab)
+        return new, {"vocab_before": before, "vocab_after": new.vocab_size, "added": len(added), "rounds": 1,
+                     "tpb_before": None, "tpb_after": None, "stopped": "kata baru dari teks"}
     base = BPETokenizer(getattr(tok, "merges", []))
     pieces = _pieces(texts, policy.line_chars, policy.sample_chars)
     report = {"vocab_before": base.vocab_size, "vocab_after": base.vocab_size, "added": 0, "rounds": 0,

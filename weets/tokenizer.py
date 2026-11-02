@@ -146,6 +146,9 @@ def tokenizer_from_dict(d):
         if d.get("vocab_size", tok.vocab_size) != tok.vocab_size:
             raise ValueError("tokenizer vocab_size does not match its merge list (corrupt file?)")
         return tok
+    if t == "word":
+        from .wordtok import WordTokenizer
+        return WordTokenizer.from_dict(d)
     raise ValueError(f"unknown tokenizer type {t!r}")
 
 

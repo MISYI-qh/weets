@@ -14,7 +14,7 @@ from .generate import load_model, pick_device
 from .optim import AdamW
 from .growth_policy import estimate_params, propose
 from .model import WeetsModel
-from .tokenizer import BASE_VOCAB
+from .tokenizer import BASE_VOCAB, UNK
 
 
 def transplant(model, old_state):
@@ -65,6 +65,12 @@ def migrate_vocab(old_state, mc, tokenizer):
     new_mc = replace(mc, vocab_size=tokenizer.vocab_size)
     m = transplant(WeetsModel(new_mc), old_state)
     E = m.params["tok_emb.weight"]  # tied with the output projection
+    if getattr(tokenizer, "kind", "") == "word":
+        # baris baru = rata-rata embedding byte penyusun kata itu (mulai dekat bagian-bagiannya)
+        for i in range(mc.vocab_size, tokenizer.vocab_size):
+            parts = [b for b in tokenizer.piece_ids(i) if b < 256] or [UNK]
+            E[i] = E[parts].mean(axis=0)
+        return m, new_mc
     for j in range(mc.vocab_size - BASE_VOCAB, len(getattr(tokenizer, "merges", []))):
         if BASE_VOCAB + j < mc.vocab_size:
             continue

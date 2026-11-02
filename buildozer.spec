@@ -3,23 +3,28 @@ title = Weets
 package.name = weets
 package.domain = id.misyi
 source.dir = .
-source.include_exts = py,html,json,svg,png,wt,jsonl
-version = 1.6.0
-requirements = python3,numpy,pyjnius,android
-icon.filename = %(source.dir)s/icon.png
+source.include_exts = py,png,svg,html,json,wt
+source.exclude_dirs = tests,pelatihan,.github,bin,.buildozer,src_android
+version = 2.1.0
+requirements = python3,numpy,android,pyjnius
 orientation = portrait
-android.permissions = INTERNET,FOREGROUND_SERVICE,POST_NOTIFICATIONS,WAKE_LOCK,RECEIVE_BOOT_COMPLETED,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
-android.archs = arm64-v8a
-android.presplash_color = #FFFFFF
-android.api = 33
-android.minapi = 24
-android.accept_sdk_license = True
-source.exclude_dirs = tests, bin, bin-boot, .buildozer, .github, weets_home, android_src
+fullscreen = 0
+icon.filename = %(source.dir)s/icon.png
 presplash.filename = %(source.dir)s/presplash.png
-services = weets:service.py:foreground:sticky
-android.extra_manifest_application_arguments = ./extra_manifest_application_arguments.xml
+android.presplash_color = #fafaf8
+
+# WebView membuka http://127.0.0.1:5000 (server Python di dalam aplikasi)
 p4a.bootstrap = webview
-android.port = 5000
+p4a.port = 5000
+android.archs = arm64-v8a
+android.minapi = 24
+android.api = 34
+android.permissions = INTERNET,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,WAKE_LOCK,POST_NOTIFICATIONS,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,RECEIVE_BOOT_COMPLETED
+android.extra_manifest_application_arguments = ./src_android/extra_manifest_application_arguments.xml
+# layanan belajar di latar belakang (dihidupkan/dibatalkan pengguna di dalam aplikasi)
+services = weets:service.py:foreground
+android.allow_backup = True
 
 [buildozer]
 log_level = 2
+warn_on_root = 1
