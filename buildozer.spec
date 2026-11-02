@@ -19,6 +19,8 @@ p4a.port = 5000
 android.archs = arm64-v8a
 android.minapi = 24
 android.api = 34
+android.build_tools_version = 34.0.0
+android.accept_sdk_license = True
 android.permissions = INTERNET,FOREGROUND_SERVICE,FOREGROUND_SERVICE_DATA_SYNC,WAKE_LOCK,POST_NOTIFICATIONS,REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,RECEIVE_BOOT_COMPLETED
 android.extra_manifest_application_arguments = ./src_android/extra_manifest_application_arguments.xml
 # layanan belajar di latar belakang (dihidupkan/dibatalkan pengguna di dalam aplikasi)
